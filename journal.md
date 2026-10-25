@@ -6,10 +6,8 @@ One number, per day, from the system I built. Not what I learned — what I meas
 
 ## Day 3 — 2026-10-25 (Gemini integration)
 
-**Number:** Gemini structured extraction on 11,920-char CV text returned 14 technical skills + 7 experiences + 7 projects = 28 validated items. 100% pass rate on Pydantic validation across all runs. Endpoint tested end-to-end via Swagger with 4 scenarios (happy path 200, wrong extension 400, corrupted PDF 422, LLM unavailable 503) — all 4 returned correct status codes. Fallback chain (primary + 3 fallbacks) verified when primary model 503'd during development.
+**Number:** 28 items validated (14 skills, 7 experiences, 7 projects) from a 11,920-char CV. 4/4 endpoint scenarios returned correct status codes (200/400/422/503). 0/10 Pydantic validation failures.
 
-**What I changed because of it:** Two real bugs found and fixed:
-1. Circular import between `main.py` and `llm_extractor.py` — fixed by extracting Pydantic models into `models.py`.
-2. Corrupted PDF content (12 chars of garbage) returned 200 OK with empty analysis — fixed by adding a 100-char minimum-length check on extracted text before LLM call.
+**What I changed because of it:** Fixed circular import (models.py extraction) and added 100-char min-length check on extracted text.
 
-Both fixes make the endpoint handle failure modes that a naive implementation would silently accept.
+---
