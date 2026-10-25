@@ -2,42 +2,18 @@
 
 Day 0 (Foundation): scaffold with health check + Pydantic models
 Day 1: (module work, no endpoint changes)
-Day 2: POST /cv-analysis now accepts a PDF upload and returns extracted text
+Day 2: POST /cv-analysis accepts PDF upload, returns extracted text
+Day 3: POST /cv-analysis now calls Gemini and returns validated CVAnalysis
 """
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel
 
+from models import AnalyzeRequest, CVAnalysisResponse
 from pdf_extractor import extract_text
-from exceptions import PdfExtractionError
+from llm_extractor import extract_cv_data
+from exceptions import PdfExtractionError, LlmExtractionError
 
 app = FastAPI()
-
-
-# ---------------------------------------------------------------------------
-# Request / response models
-# ---------------------------------------------------------------------------
-
-class AnalyzeRequest(BaseModel):
-    name: str
-
-
-class CVItem(BaseModel):
-    title: str
-    description: str
-
-
-class CVAnalysis(BaseModel):
-    technicalSkills: list[CVItem]
-    experience: list[CVItem]
-    projects: list[CVItem]
-
-
-class CVAnalysisResponse(BaseModel):
-    """Response from POST /cv-analysis (Day 2 version: extracted text only)."""
-    filename: str
-    text_length: int
-    text: str
 
 
 # ---------------------------------------------------------------------------
@@ -57,10 +33,13 @@ def analyze(request: AnalyzeRequest):
 @app.post("/cv-analysis", response_model=CVAnalysisResponse)
 async def cv_analysis(file: UploadFile = File(...)):
     """
-    Accept a PDF upload and return the extracted text.
+    Accept a PDF upload, extract its text, send it to Gemini,
+    and return a validated CVAnalysis object.
 
-    Day 2: returns raw extracted text (no LLM yet).
-    Day 3: this endpoint will call Gemini and return a validated CVAnalysis.
+    Failure modes:
+    - Wrong file extension → 400
+    - Invalid PDF → 422
+    - Gemini failure or invalid LLM output → 503
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
@@ -78,8 +57,24 @@ async def cv_analysis(file: UploadFile = File(...)):
             detail=f"Unexpected error while processing PDF: {e}",
         )
 
+    try:
+        analysis = extract_cv_data(text)
+    except LlmExtractionError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"LLM extraction failed: {e}",
+        )
+
+        # Reject texts too short to be a real CV
+    if len(text.strip()) < 100:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Extracted text is too short to be a CV ({len(text.strip())} chars). "
+                   "The file may not be a valid CV.",
+        )
+
     return CVAnalysisResponse(
         filename=file.filename,
         text_length=len(text),
-        text=text,
+        analysis=analysis,
     )

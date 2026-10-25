@@ -17,3 +17,11 @@ class PdfExtractionError(Exception):
     - The PDF is encrypted and cannot be read without a password
     - The PDF is image-only (scanned) and contains no extractable text
     """
+
+class LlmExtractionError(Exception):
+    """Raised when the LLM cannot extract structured CV data.
+
+    Distinct from PdfExtractionError, which covers PDF parsing failures.
+    This error covers: API unavailability, invalid JSON output, and
+    schema mismatches between the LLM's output and our expected shape.
+    """
