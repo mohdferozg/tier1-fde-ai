@@ -102,3 +102,10 @@ The `git log` should read as a chronological engineering narrative, not a diary.
 | 10 | FDE / customer architecture |
 
 Currently in Phase 1, moving into Phase 2.
+
+## 🚀 Live Demo
+
+- **Frontend UI:** [https://cv-analyzer-ui-roan.vercel.app](https://cv-analyzer-ui-roan.vercel.app)
+- **Backend API:** [https://cv-analyzer-api-rbgc.onrender.com/docs](https://cv-analyzer-api-rbgc.onrender.com/docs)
+
+*(Note: The backend is hosted on Render's free tier. If it has been inactive for 15 minutes, the first request may take up to 50 seconds to wake up the server.)*
