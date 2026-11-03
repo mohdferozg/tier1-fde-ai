@@ -39,7 +39,7 @@ export class AppComponent {
     formData.append('file', this.selectedFile);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/cv-analysis', {
+      const response = await fetch('https://cv-analyzer-api-rbgc.onrender.com/cv-analysis', {
         method: 'POST',
         body: formData
       });
