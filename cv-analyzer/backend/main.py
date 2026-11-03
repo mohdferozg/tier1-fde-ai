@@ -7,7 +7,7 @@ Day 3: POST /cv-analysis now calls Gemini and returns validated CVAnalysis
 """
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-
+from fastapi.middleware.cors import CORSMiddleware 
 from models import AnalyzeRequest, CVAnalysisResponse
 from pdf_extractor import extract_text
 from llm_extractor import extract_cv_data
@@ -15,6 +15,14 @@ from exceptions import PdfExtractionError, LlmExtractionError
 
 app = FastAPI()
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # Endpoints
