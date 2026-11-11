@@ -35,3 +35,9 @@ One number, per day, from the system I built. Not what I learned — what I meas
 **Number:** 2/2 successful RAG queries rendered in UI with correct source citations. End-to-end time: ~4.5s (retrieval + generation + render). CORS blocked 1/1 requests before fix; 0/1 after.
 
 **What I changed because of it:** Built an Angular chat interface. Changed CORS policy in `main.py` to explicitly allow `localhost:4200`. Rendered source chunk IDs as visual badges under the AI responses.
+
+## Day 8 — 2026-11-11 (RAG Deployment)
+
+**Number:** 2/2 deployment targets successful (Render backend + Vercel frontend). Live RAG query: 200 OK, grounded answer with correct sources. Cold start time: ~50s.
+
+**What I changed because of it:** Generated `requirements.txt` to fix the Render build. Configured `allow_origin_regex` for Vercel. Hardcoded the live Render URL into the Angular fetch call.

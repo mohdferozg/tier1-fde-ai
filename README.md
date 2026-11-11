@@ -109,3 +109,10 @@ Currently in Phase 1, moving into Phase 2.
 - **Backend API:** [https://cv-analyzer-api-rbgc.onrender.com/docs](https://cv-analyzer-api-rbgc.onrender.com/docs)
 
 *(Note: The backend is hosted on Render's free tier. If it has been inactive for 15 minutes, the first request may take up to 50 seconds to wake up the server.)*
+
+### Portfolio Artifact #2: RAG Chat Application
+
+- **Frontend UI:** [https://rag-chat-ui.vercel.app](https://rag-chat-ui.vercel.app)
+- **Backend API:** [https://rag-lab-api-2dix.onrender.com/docs](https://rag-lab-api-2dix.onrender.com/docs)
+
+*A Retrieval-Augmented Generation system that answers questions about a document knowledge base using Supabase (pgvector), Gemini embeddings, and grounded generation with source citations.*
