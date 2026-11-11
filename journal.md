@@ -41,3 +41,9 @@ One number, per day, from the system I built. Not what I learned — what I meas
 **Number:** 2/2 deployment targets successful (Render backend + Vercel frontend). Live RAG query: 200 OK, grounded answer with correct sources. Cold start time: ~50s.
 
 **What I changed because of it:** Generated `requirements.txt` to fix the Render build. Configured `allow_origin_regex` for Vercel. Hardcoded the live Render URL into the Angular fetch call.
+
+## Day 9 — 2026-11-11 (RAG Evaluation)
+
+**Number:** 10-question eval. Retrieval accuracy: 70% (7/10). Answer accuracy: 60% (6/10). Avg latency: 24.69s. Fallback chain saved 7/10 queries from 504 errors.
+
+**What I changed because of it:** Built a golden dataset and evaluation script. Added a 30s HTTP timeout to `generator.py`. Improved eval matching with text normalization.
