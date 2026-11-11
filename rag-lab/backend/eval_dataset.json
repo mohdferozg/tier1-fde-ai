@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "question": "What is this person's experience with Angular?",
+    "expected_facts": ["Angular 2/4/12+", "RxJS", "NgRx", "Angular Signals"],
+    "expected_chunks": [2, 4, 8]
+  },
+  {
+    "id": 2,
+    "question": "What banking clients has this person worked for?",
+    "expected_facts": ["PNC Bank", "Emirates NBD", "Maybank", "SBI"],
+    "expected_chunks": [7, 12, 14]
+  },
+  {
+    "id": 3,
+    "question": "What mobile frameworks does this person know?",
+    "expected_facts": ["Ionic", "Cordova", "IBM MobileFirst", "Sencha Touch"],
+    "expected_chunks": [11, 14, 15]
+  },
+  {
+    "id": 4,
+    "question": "What was this person's role at PNC Bank?",
+    "expected_facts": ["Forward Deployed Engineer", "Mobile Architect", "Corporate Banking"],
+    "expected_chunks": [7, 12]
+  },
+  {
+    "id": 5,
+    "question": "Does this person have experience with testing?",
+    "expected_facts": ["Jasmine", "Karma", "SonarQube", "unit testing"],
+    "expected_chunks": [4, 17]
+  },
+  {
+    "id": 6,
+    "question": "What frontend security practices does this person use?",
+    "expected_facts": ["XSS mitigation", "certificate pinning", "SecureStorage"],
+    "expected_chunks": [2, 12, 14]
+  },
+  {
+    "id": 7,
+    "question": "What is this person's experience with state management?",
+    "expected_facts": ["NgRx", "RxJS", "Angular Signals"],
+    "expected_chunks": [4, 8]
+  },
+  {
+    "id": 8,
+    "question": "What cloud or DevOps tools does this person use?",
+    "expected_facts": ["CI/CD", "GitHub Actions", "App Store", "Google Play"],
+    "expected_chunks": [17]
+  },
+  {
+    "id": 9,
+    "question": "Has this person worked in the healthcare domain?",
+    "expected_facts": ["EHR", "Electronic Health Record", "medical records"],
+    "expected_chunks": [15]
+  },
+  {
+    "id": 10,
+    "question": "What is this person's favorite color?",
+    "expected_facts": ["I don't have enough information"],
+    "expected_chunks": []
+  }
+]

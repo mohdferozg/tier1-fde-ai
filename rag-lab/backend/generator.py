@@ -85,6 +85,7 @@ def answer(query: str, top_k: int = 3) -> dict:
                 config=types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                     temperature=0.2,
+                    http_options=types.HttpOptions(timeout=30000),  # 30 seconds
                 ),
             )
             working_model = candidate
