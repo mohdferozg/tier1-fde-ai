@@ -1,0 +1,47 @@
+<div class="chat-container">
+  <header class="chat-header">
+    <h1>{{ title }}</h1>
+    <p class="subtitle">Ask questions about the document knowledge base.</p>
+  </header>
+
+  <div class="chat-history">
+    <div *ngIf="messages.length === 0" class="empty-state">
+      <p>No messages yet. Try asking:</p>
+      <ul>
+        <li>"What is this person's experience with Angular?"</li>
+        <li>"What banking clients has this person worked for?"</li>
+        <li>"What mobile frameworks does this person know?"</li>
+      </ul>
+    </div>
+
+    <div *ngFor="let msg of messages" class="message" [ngClass]="msg.role">
+      <div class="avatar">{{ msg.role === 'user' ? 'You' : 'AI' }}</div>
+      <div class="bubble">
+        <div *ngIf="msg.isLoading" class="typing-indicator">
+          <span></span><span></span><span></span>
+        </div>
+        <div *ngIf="!msg.isLoading" class="content">
+          {{ msg.text }}
+        </div>
+        <div *ngIf="msg.sources && msg.sources.length > 0" class="sources">
+          <strong>Sources:</strong> 
+          <span *ngFor="let s of msg.sources" class="source-badge">Chunk {{ s }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <input 
+      type="text" 
+      [(ngModel)]="query" 
+      (keyup.enter)="sendQuery()"
+      [disabled]="loading"
+      placeholder="Ask a question..."
+      class="chat-input"
+    />
+    <button (click)="sendQuery()" [disabled]="!query.trim() || loading" class="send-btn">
+      Send
+    </button>
+  </div>
+</div>
