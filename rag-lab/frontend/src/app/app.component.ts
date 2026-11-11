@@ -50,7 +50,7 @@ export class AppComponent {
     this.loading = true;
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/query', {
+      const response = await fetch('https://rag-lab-api-2dix.onrender.com/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: userText, top_k: 3 })
