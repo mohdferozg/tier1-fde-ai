@@ -23,3 +23,9 @@ One number, per day, from the system I built. Not what I learned — what I meas
 **Number:** Live URLs deployed. Backend response time: ~400ms (warm) / ~50s (cold start on Render free tier). Frontend build time on Vercel: 1m 12s. 2/2 deployment targets successful.
 
 **What I changed because of it:** Configured `Procfile` and `.python-version` for Render. Set `allow_origin_regex` in FastAPI to permit Vercel domains. Hardcoded the Render API URL into the Angular `fetch` call.
+
+## Day 6 — 2026-11-11 (RAG pipeline)
+
+**Number:** 17 chunks ingested from 11,920-char CV (768-dim embeddings). Retrieval similarity: 0.62–0.70 top-3. Generation: 2/2 grounded answers with correct citations. Hallucination defense: 1/1 correct refusal. Model fallback: 1/3 calls needed fallback (gemini-3.8-flash → gemini-3.5-flash).
+
+**What I changed because of it:** Set embedding output_dimensionality=768 to match the database column. Added a 5-model fallback chain to `generator.py` to survive Gemini model deprecations and 503 spikes.
