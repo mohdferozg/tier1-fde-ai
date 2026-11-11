@@ -29,3 +29,9 @@ One number, per day, from the system I built. Not what I learned — what I meas
 **Number:** 17 chunks ingested from 11,920-char CV (768-dim embeddings). Retrieval similarity: 0.62–0.70 top-3. Generation: 2/2 grounded answers with correct citations. Hallucination defense: 1/1 correct refusal. Model fallback: 1/3 calls needed fallback (gemini-3.8-flash → gemini-3.5-flash).
 
 **What I changed because of it:** Set embedding output_dimensionality=768 to match the database column. Added a 5-model fallback chain to `generator.py` to survive Gemini model deprecations and 503 spikes.
+
+## Day 7 — 2026-11-12 (RAG Chat UI)
+
+**Number:** 2/2 successful RAG queries rendered in UI with correct source citations. End-to-end time: ~4.5s (retrieval + generation + render). CORS blocked 1/1 requests before fix; 0/1 after.
+
+**What I changed because of it:** Built an Angular chat interface. Changed CORS policy in `main.py` to explicitly allow `localhost:4200`. Rendered source chunk IDs as visual badges under the AI responses.
