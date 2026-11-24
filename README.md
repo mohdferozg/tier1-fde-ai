@@ -36,9 +36,9 @@ Future phases will add `mcp-lab/` and `evaluations/` at the same level as `cv-an
 
 - **Artifact 1 — CV analyzer:** FastAPI + Pydantic structured extraction from PDFs, validated nested models. Live.
 - **Artifact 2 — RAG chat:** chunking, embeddings, pgvector retrieval, grounded answers with citations. Live. Measured against a 10-question golden set: 70% retrieval hit rate, 60% exact-match answer accuracy, 24.69s average latency.
-- **Artifact 3 — Delivery-ops agent:** 5 typed tools over SQLite, a manual agent loop with a per-step trace, and 78 offline assertions that run without an API key or a server. Local.
+- **Artifact 3 — Delivery-ops agent:** 5 typed tools over SQLite, a manual agent loop with a per-step trace, and 85 offline assertions that run without an API key or a server. Verified live: 2/2 questions answered in 3 turns each, including one that recovered from a tool error on its own. Local.
 
-**Day 11 next** — agentic RAG: expose `retrieve()` as a sixth tool so one agent can combine document search with operational data.
+**Day 11 next** — agentic RAG: expose `retrieve()` as a sixth tool so one agent can combine document search with operational data. Carried over: `rag-lab/backend/generator.py` still carries the same two chain defects found in the agent (retired 2.5 rungs, un-pinned SDK retries), so its recorded latency needs re-measuring after the fix.
 
 ## Setup
 
@@ -125,7 +125,7 @@ Currently in Phase 5 (agents). Phases 1–4 are delivered: FastAPI/Pydantic serv
 cd agent-lab/backend
 .\.venv\Scripts\Activate.ps1
 python smoke_test.py        # 19 offline checks — data layer and tools
-python test_agent_loop.py   # 21 offline checks — loop, with a scripted fake LLM
+python test_agent_loop.py   # 28 offline checks — loop, with a scripted fake LLM
 python test_api.py          # 21 offline checks — HTTP contract, no server or key needed
 python test_wire.py         # 17 offline checks — real SDK vs a local mock endpoint
 python agent.py "Which clients have an open SEV1 right now, and who do I page for each?"
@@ -140,4 +140,4 @@ python -m uvicorn main:app --reload
 | `get_escalation_contact` | who owns the account and how to reach them |
 | `get_current_time` | current time and UTC offset for a named timezone |
 
-Evidence it behaves: unknown clients come back as `{"error": ...}` for the model to self-correct, parallel tool calls are serialized into a single turn, and a runaway model is stopped by a turn budget (`truncated: true`) instead of looping forever.
+Evidence it behaves: unknown clients come back as `{"error": ...}` for the model to self-correct, parallel tool calls are serialized into a single turn, and a runaway model is stopped by a turn budget (`truncated: true`) instead of looping forever. Verified against the live API on 2026-11-24: asked for the open SEV1s and who to page, the model called `get_open_incidents`, then issued both escalation lookups in one turn, then answered — 3 turns, 4 tool calls. Asked about a client that does not exist, it hit the error, called `list_clients` to find the real names, and said so.

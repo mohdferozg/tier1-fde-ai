@@ -11,11 +11,11 @@
 |------|------|
 | `db.py` | SQLite schema + seed data (6 clients, 11 incidents). Idempotent `init_db()`. |
 | `tools.py` | 5 typed tools, their model-facing JSON-schema declarations, and `execute_tool()` — the only bridge between the model and Python. |
-| `llm.py` | Gemini call with the model fallback chain from Day 6, plus a 30s timeout and `extract_text()`. |
+| `llm.py` | Gemini call with a repaired fallback chain (retired 2.5 rungs dropped, lite tier added), one SDK attempt per model, 30s timeout, `extract_text()`. |
 | `agent.py` | The loop itself: model → tool call → observation → model → answer. CLI with `--json` trace. |
 | `main.py` | FastAPI wrapper: `GET /`, `GET /tools`, `POST /ask`. |
 | `smoke_test.py` | 19 offline checks of the data layer and tools. No API key, no tokens. |
-| `test_agent_loop.py` | 21 offline checks of the loop, using a scripted fake LLM. No network. |
+| `test_agent_loop.py` | 28 offline checks of the loop, using a scripted fake LLM, plus the fallback chain's contents and the SDK retry pinning. No network. |
 | `test_api.py` | 21 offline checks of the HTTP layer via `TestClient`, with `main.run` patched. No server, no network. |
 | `test_wire.py` | 17 offline checks of the transport: the real SDK against a local mock endpoint, inspecting the JSON it actually sent. No key, no network. |
 
@@ -48,14 +48,14 @@ The descriptions are the prompt. `get_open_incidents` says "omit the filters to 
 | Test | Result |
 |------|--------|
 | `python smoke_test.py` | 19/19 checks passed — seeded data, every tool, every failure mode |
-| `python test_agent_loop.py` | 21/21 checks passed — tool call → observation → answer, using a scripted fake LLM |
+| `python test_agent_loop.py` | 28/28 checks passed — tool call → observation → answer on a scripted fake LLM; chain carries no retired model, SDK retries pinned to one attempt |
 | `python test_api.py` | 21/21 checks passed — routing, validation, full-trace serialization, 502 mapping, CORS |
 | `python test_wire.py` | 17/17 checks passed — real SDK, real HTTP, mock endpoint: declarations out, `functionCall` parsed, observation back |
 | Tool error handling | Unknown client returns `{"error": "Unknown client 'HSBC'. Known clients: ..."}` to the model instead of raising |
 | Parallel tool calls | Two `function_response` parts in one turn are serialized and replayed correctly |
 | Turn budget | A model that never stops is cut off at `max_turns` with `truncated: true` |
 | Live HTTP server (`uvicorn` on :8011) | `GET /` 200 · `GET /tools` 200 (5 tools) · `POST /ask` blank 400 · `max_turns=99` 422 · missing field 422 · dead credential 502 · CORS preflight from `*.vercel.app` 200 with the origin echoed · unknown origin rejected |
-| Live end-to-end model run | **Blocked** — the local `GEMINI_API_KEY` returns `401 UNAUTHENTICATED` (see below) |
+| Live end-to-end model run | 2/2 answered — 3 turns each, 4 and 2 tool calls, `error: null`; the unknown-client run recovered from a tool error on its own |
 
 ## What broke, and what we learned
 
@@ -133,21 +133,81 @@ What came back from the second request body, exactly as serialized:
 
 That `"response": { "result": ... }` nesting is not cosmetic — it is the shape a bare list was rejected for earlier. Here it is confirmed on the wire rather than in a constructed object.
 
-Three layers now run in CI-shaped form: 78 assertions, no key, no network, no server process.
+Three layers now run in CI-shaped form: 85 assertions, no key, no network, no server process.
 
-The remaining gap is honest and small: this proves the agent can *use* a tool call correctly, not that Gemini *chooses* the right tool for a natural-language question. That last step needs a live key.
+The one thing those three layers cannot reach is whether Gemini *chooses* the right tool for a natural-language question. That needs a live key — and it is the next section.
 
-## The blocker: expired API key
+## The live run: two questions, both answered
 
-Every live call returned:
+The key was replaced and the agent ran end to end. What it did without being told:
+
+**1. `"Which clients have an open SEV1 right now, and who do I page for each?"`**
+
+| Turn | Tool | Arguments | Outcome |
+|------|------|-----------|---------|
+| 1 | `get_open_incidents` | `{"severity": "SEV1"}` | ok, 2ms — 2 incidents |
+| 1 | `list_clients` | `{}` | ok, 1ms — not needed for this question |
+| 2 | `get_escalation_contact` | `{"client": "Emirates NBD"}` | ok, 3ms → Omar Haddad |
+| 2 | `get_escalation_contact` | `{"client": "Nordbank"}` | ok, 6ms → Lena Fischer |
+| 3 | — | — | answer |
+
+`turns: 3 · tools_used: 4 · latency_s: 148.58 · truncated: false · error: null`
+
+The second turn is the part worth reading. Nothing in the prompt said "look up the contacts" — the model read the two SEV1 rows, worked out that "who do I page for each" needs one lookup per client, and issued both calls in a single turn.
+
+**2. `"What is the SLA for HSBC?"`** — a client that does not exist.
+
+| Turn | Tool | Outcome |
+|------|------|---------|
+| 1 | `get_client_snapshot({"client": "HSBC"})` | **error** — `Unknown client 'HSBC'. Known clients: Axiata, Emirates NBD, ...` |
+| 2 | `list_clients({})` | ok, 3ms — self-correction |
+| 3 | — | "HSBC is not an active client deployment. Known clients are Axiata, Emirates NBD, Maybank, Nordbank, PNC Bank, and SBI. Confirm if HSBC was recently onboarded…" |
+
+`turns: 3 · latency_s: 124.17 · error: null`
+
+The tool returned an error instead of raising, the loop kept going, and the model used the error text to correct itself. That is the entire argument for `execute_tool()` never raising.
+
+## The bug the live run found: a chain with dead rungs
+
+The first live attempt failed outright:
 
 ```
-401 UNAUTHENTICATED: API key not valid. reason: ACCESS_TOKEN_TYPE_UNSUPPORTED
+All Gemini models failed. gemini-3.8-flash: 503 UNAVAILABLE | gemini-3.5-flash: 503 UNAVAILABLE
+| gemini-2.5-flash: 404 NOT_FOUND | gemini-2.5-flash-lite: 404 NOT_FOUND
 ```
 
-The key in `rag-lab/backend/.env` is a 53-character `AQ.A...` value — an OAuth-style access token, not an AI Studio API key (those start with `AIza`). It worked on Day 9 and is now rejected, which means it expired. Regenerate at <https://aistudio.google.com/apikey>, paste into `agent-lab/backend/.env`, and the same command will run.
+Two of the four rungs could never fire. Probing every candidate with a real tool-enabled request, one attempt each:
 
-This is also why the offline suite exists: the loop, the tools, and the serialization are all verified without a single token, so a dead key is a credential problem, not a code problem.
+| Model | Result |
+|---|---|
+| `gemini-3.8-flash` | 503 UNAVAILABLE, 8.6s |
+| `gemini-3.7-flash` | 503 UNAVAILABLE, 9.8s |
+| `gemini-3.6-flash` | 504 DEADLINE_EXCEEDED, 19.2s |
+| `gemini-3.5-flash` | 503 UNAVAILABLE, 17.3s |
+| `gemini-3.5-flash-lite` | **OK, 0.9s** |
+| `gemini-3.1-flash-lite` | **OK, 7.1s** |
+| `gemini-2.5-flash` | 404 — "no longer available to new users… use models/gemini-3.8-flash" |
+| `gemini-2.5-flash-lite` | 404 — "no longer available… use models/gemini-3.5-flash-lite" |
+
+Three findings, in order of cost:
+
+**1. The 2.5 series is retired for new keys, and the error says so.** Those rungs were unreachable, so every request paid two guaranteed failures. Removed. The `gemini-flash-latest` default was wrong for a second reason — `v1beta` rejects rolling aliases (Day 6) — so the default is now an explicit `gemini-3.8-flash`.
+
+**2. The lite tier was the only thing up.** Every flash model was saturated; both lite models answered in under a second. The chain now ends on the lite tier instead of on dead model names.
+
+**3. The SDK was retrying underneath the chain.** `HttpRetryOptions` defaults to several backoff attempts per model, so one 503 could stall a turn for minutes before the next rung was even tried. Pinned to a single attempt per model (`GEMINI_ATTEMPTS`, default `1`) — the fallback chain *is* the retry strategy. The same 503: **8.6s instead of minutes**.
+
+Finding 3 also explains Day 9's latency: 13s on a good question, 539s on a bad one. That was never the RAG code — it was SDK retries stacked under an unhelpful chain. `rag-lab/backend/generator.py` still carries both defects (see Day 11).
+
+The chain that runs now, primary first:
+
+```python
+[os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+ "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash",
+ "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+```
+
+Both successful runs above were answered entirely by `gemini-3.5-flash-lite` — every flash rung returned 503 on every turn that day. That is the chain doing its job, and it is also why the latency reads 124–149s: roughly 35s of failed rungs before each of the three turns. The loop is not slow; the provider was saturated. Under a healthy flash model the same question is a single turn.
 
 ## How to run it
 
@@ -159,7 +219,7 @@ pip install -r requirements.txt
 copy .env.example .env      # then paste a fresh GEMINI_API_KEY
 
 python smoke_test.py        # 19 offline checks
-python test_agent_loop.py   # 21 offline checks
+python test_agent_loop.py   # 28 offline checks
 python test_api.py          # 21 offline checks (no server needed)
 python test_wire.py         # 17 offline checks (real SDK, mock endpoint)
 python agent.py "Which clients have an open SEV1 right now, and who do I page for each?"
@@ -170,13 +230,14 @@ python -m uvicorn main:app --reload
 ## What was measured (journal entry)
 
 - 5 tools declared, 5 implemented, 1:1 contract check enforced by test
-- 19/19 tool checks + 21/21 loop checks + 21/21 API checks + 17/17 wire checks = **78 offline assertions, 0 network calls**
+- 19/19 tool checks + 28/28 loop checks + 21/21 API checks + 17/17 wire checks = **85 offline assertions, 0 network calls**
 - Seed data: 6 clients, 11 incidents, 2 open SEV1
-- Turn budget: 6 (env `AGENT_MAX_TURNS`), per-call timeout 30s (`GEMINI_TIMEOUT_MS`)
+- Turn budget: 6 (env `AGENT_MAX_TURNS`), per-call timeout 30s (`GEMINI_TIMEOUT_MS`), one SDK attempt per model (`GEMINI_ATTEMPTS`)
 - 1 real bug found by the tests (timezone offset label), 1 API-contract constraint discovered (dict-only `FunctionResponse`)
 - HTTP status codes verified against a live server: 200 / 400 / 422 ×3 / 502 / CORS 200 + rejection
 - Wire format verified without a key: 5 declarations out, raw `functionCall` parsed, `functionResponse.response` a JSON object
-- Live model runs: 0 successful — blocked on a 401 from an expired key
+- **Live model runs: 2/2 answered.** 3 turns each. SEV1 escalation question: 4 tool calls, 148.58s. Unknown-client question: 2 tool calls, 124.17s, self-corrected from a tool error. Both answered by `gemini-3.5-flash-lite` after three flash rungs returned 503 per turn
+- **1 real bug found by going live:** the fallback chain carried two rungs the API had retired (404), and the SDK was retrying beneath it — fixed and now covered by 7 assertions
 
 ## Tomorrow (Day 11)
 
@@ -185,4 +246,6 @@ Two candidates, both one step up from here:
 1. **Agentic RAG:** wrap `rag-lab`'s `retrieve()` as a sixth tool, so one agent can answer "is this candidate's Angular experience relevant to the Emirates NBD incident?" by mixing document search with operational data.
 2. **Agent UI + deploy:** an Angular chat that renders each tool step as a timeline, and the Render/Vercel deployment to make artifact #3 live.
 
-Recommended: agentic RAG first. The tool contract and the loop are already proven, and adding retrieval as a tool is where this stops being a demo and starts being an architecture.
+Carried over, and worth doing first because it is small: **`rag-lab/backend/generator.py` still has both chain defects** — the retired 2.5 rungs and un-pinned SDK retries. That is the real explanation for Day 9's 24.69s average and its 539s outlier, so fixing it should be paired with re-running the 10-question eval and publishing the improved latency against the recorded baseline.
+
+Recommended: fix the rag-lab chain and re-measure, then agentic RAG. The tool contract and the loop are already proven, and retrieval-as-a-tool is where this stops being a demo and starts being an architecture.
