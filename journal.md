@@ -47,3 +47,9 @@ One number, per day, from the system I built. Not what I learned — what I meas
 **Number:** 10-question eval. Retrieval accuracy: 70% (7/10). Answer accuracy: 60% (6/10). Avg latency: 24.69s. Fallback chain saved 7/10 queries from 504 errors.
 
 **What I changed because of it:** Built a golden dataset and evaluation script. Added a 30s HTTP timeout to `generator.py`. Improved eval matching with text normalization.
+
+## Day 10 — 2026-11-24 (First Agent with Tool Calling)
+
+**Number:** 5 tools, 5 declarations kept 1:1 with the registry by test. 40/40 offline assertions passing (19 tool checks + 21 loop checks) with 0 network calls. Turn budget 6 at a 30s per-call timeout. Live runs: 0 — the local `GEMINI_API_KEY` returns 401 `ACCESS_TOKEN_TYPE_UNSUPPORTED` (expired token, not a code defect).
+
+**What I changed because of it:** Built `agent-lab/` — a delivery-ops agent that calls SQLite-backed tools and reasons over the results. Disabled automatic function calling so every tool call is logged with the model name, args, ok/error, and duration. Fixed a timezone bug where `datetime + timedelta` returned the right clock time with a `+00:00` label. Wrapped tool results in `{"result": ...}` after finding that `FunctionResponse.response` rejects bare lists. Wrote a scripted-fake-LLM test so the loop is verifiable without spending a token.

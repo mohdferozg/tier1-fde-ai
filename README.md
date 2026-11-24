@@ -28,19 +28,17 @@ tier1-fde-ai/
     └── day-01.md                 # Day 1: environment, Git, FastAPI, first LLM call
 ```
 
-Future phases will add `rag-lab/`, `agent-lab/`, `mcp-lab/`, and `evaluations/` at the same level as `cv-analyzer/`.
+Future phases will add `mcp-lab/` and `evaluations/` at the same level as `cv-analyzer/`, `rag-lab/`, and `agent-lab/`.
 
 ## Current status
 
-**Day 1 complete** — backend skeleton with typed contracts and verified LLM connectivity.
+**Day 10 complete** — three working artifacts, two of them deployed.
 
-- FastAPI app with `GET /`, `POST /analyze`, `POST /cv-analysis`
-- Pydantic models: `AnalyzeRequest`, `CVItem`, `CVAnalysis`
-- Nested validation across `technicalSkills`, `experience`, `projects`
-- Gemini API verified end-to-end (`google-genai` SDK)
-- Secrets loaded via `python-dotenv`, provably gitignored
+- **Artifact 1 — CV analyzer:** FastAPI + Pydantic structured extraction from PDFs, validated nested models. Live.
+- **Artifact 2 — RAG chat:** chunking, embeddings, pgvector retrieval, grounded answers with citations. Live. Measured against a 10-question golden set: 70% retrieval hit rate, 60% exact-match answer accuracy, 24.69s average latency.
+- **Artifact 3 — Delivery-ops agent:** 5 typed tools over SQLite, a manual agent loop with a per-step trace, and 40 offline assertions that run without an API key. Local.
 
-**Day 2 next** — PDF extraction wired into `/cv-analysis`, with Gemini producing structured `CVAnalysis` output validated by Pydantic.
+**Day 11 next** — agentic RAG: expose `retrieve()` as a sixth tool so one agent can combine document search with operational data.
 
 ## Setup
 
@@ -101,7 +99,7 @@ The `git log` should read as a chronological engineering narrative, not a diary.
 | 9 | LLMOps and AI platform engineering |
 | 10 | FDE / customer architecture |
 
-Currently in Phase 1, moving into Phase 2.
+Currently in Phase 5 (agents). Phases 1–4 are delivered: FastAPI/Pydantic services, structured LLM output, RAG, and tool declarations.
 
 ## 🚀 Live Demo
 
@@ -116,3 +114,28 @@ Currently in Phase 1, moving into Phase 2.
 - **Backend API:** [https://rag-lab-api-2dix.onrender.com/docs](https://rag-lab-api-2dix.onrender.com/docs)
 
 *A Retrieval-Augmented Generation system that answers questions about a document knowledge base using Supabase (pgvector), Gemini embeddings, and grounded generation with source citations.*
+
+### Portfolio Artifact #3: Delivery-Ops Agent (tool calling)
+
+- **Location:** [`agent-lab/backend`](agent-lab/backend) — local, not yet deployed
+
+*A Gemini agent that decides which tool to call, executes it against SQLite, reads the result, and keeps going until it can answer. The loop is written by hand — automatic function calling is disabled — so every step is traceable: which model ran the call, the arguments it chose, the latency, and the outcome.*
+
+```powershell
+cd agent-lab/backend
+.\.venv\Scripts\Activate.ps1
+python smoke_test.py        # 19 offline checks — data layer and tools
+python test_agent_loop.py   # 21 offline checks — loop, with a scripted fake LLM
+python agent.py "Which clients have an open SEV1 right now, and who do I page for each?"
+python -m uvicorn main:app --reload
+```
+
+| Tool | What the model can ask for |
+|------|---------------------------|
+| `list_clients` | every client, tier, service, region |
+| `get_client_snapshot` | uptime, SLA target, whether the SLA is met, open incident counts |
+| `get_open_incidents` | open incidents, optionally filtered by client or severity |
+| `get_escalation_contact` | who owns the account and how to reach them |
+| `get_current_time` | current time and UTC offset for a named timezone |
+
+Evidence it behaves: unknown clients come back as `{"error": ...}` for the model to self-correct, parallel tool calls are serialized into a single turn, and a runaway model is stopped by a turn budget (`truncated: true`) instead of looping forever.
