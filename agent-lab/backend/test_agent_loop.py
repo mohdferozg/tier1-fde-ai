@@ -10,6 +10,7 @@ import sys
 from google.genai import types
 
 import agent
+import llm
 
 failures: list[str] = []
 
@@ -148,6 +149,42 @@ def main() -> int:
         check("budget respected", result["turns"] == 2, str(result["turns"]))
         check("tools capped at budget", len(result["tools_used"]) == 2,
               str(result["tools_used"]))
+
+        # --- 7. The fallback chain is real ----------------------------------
+        candidates = llm.model_candidates()
+        check("no retired model left in the chain",
+              not any(c.startswith("gemini-2.5") for c in candidates), str(candidates))
+        check("chain ends on the lite tier that survives a demand spike",
+              candidates[-1].endswith("flash-lite"), str(candidates))
+        check("SDK retries pinned so the chain owns retrying",
+              llm.DEFAULT_ATTEMPTS == 1, str(llm.DEFAULT_ATTEMPTS))
+
+        sent: list[tuple[str, types.GenerateContentConfig]] = []
+
+        class RecordingClient:
+            class models:
+                @staticmethod
+                def generate_content(model, contents, config):
+                    sent.append((model, config))
+                    return text_turn("ok")
+
+        original_client = llm.get_client
+        llm.get_client = lambda: RecordingClient()  # type: ignore[assignment]
+        try:
+            llm.generate("ping", timeout_ms=1234)
+        finally:
+            llm.get_client = original_client  # type: ignore[assignment]
+
+        tried_model, config = sent[0]
+        check("first request goes to the primary candidate",
+              tried_model == candidates[0], tried_model)
+        check("timeout is forwarded to the SDK",
+              config.http_options.timeout == 1234, str(config.http_options.timeout))
+        check("one SDK attempt per model",
+              config.http_options.retry_options.attempts == 1,
+              str(config.http_options.retry_options))
+        check("automatic function calling stays disabled",
+              config.automatic_function_calling.disable is True)
     finally:
         agent.generate = original_generate
 
