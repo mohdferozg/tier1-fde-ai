@@ -36,7 +36,7 @@ Future phases will add `mcp-lab/` and `evaluations/` at the same level as `cv-an
 
 - **Artifact 1 — CV analyzer:** FastAPI + Pydantic structured extraction from PDFs, validated nested models. Live.
 - **Artifact 2 — RAG chat:** chunking, embeddings, pgvector retrieval, grounded answers with citations. Live. Measured against a 10-question golden set: 70% retrieval hit rate, 60% exact-match answer accuracy, 24.69s average latency.
-- **Artifact 3 — Delivery-ops agent:** 5 typed tools over SQLite, a manual agent loop with a per-step trace, and 40 offline assertions that run without an API key. Local.
+- **Artifact 3 — Delivery-ops agent:** 5 typed tools over SQLite, a manual agent loop with a per-step trace, and 61 offline assertions that run without an API key or a server. Local.
 
 **Day 11 next** — agentic RAG: expose `retrieve()` as a sixth tool so one agent can combine document search with operational data.
 
@@ -126,6 +126,7 @@ cd agent-lab/backend
 .\.venv\Scripts\Activate.ps1
 python smoke_test.py        # 19 offline checks — data layer and tools
 python test_agent_loop.py   # 21 offline checks — loop, with a scripted fake LLM
+python test_api.py          # 21 offline checks — HTTP contract, no server or key needed
 python agent.py "Which clients have an open SEV1 right now, and who do I page for each?"
 python -m uvicorn main:app --reload
 ```

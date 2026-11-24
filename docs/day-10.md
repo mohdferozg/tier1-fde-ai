@@ -16,6 +16,7 @@
 | `main.py` | FastAPI wrapper: `GET /`, `GET /tools`, `POST /ask`. |
 | `smoke_test.py` | 19 offline checks of the data layer and tools. No API key, no tokens. |
 | `test_agent_loop.py` | 21 offline checks of the loop, using a scripted fake LLM. No network. |
+| `test_api.py` | 21 offline checks of the HTTP layer via `TestClient`, with `main.run` patched. No server, no network. |
 
 ## The architecture
 
@@ -47,10 +48,12 @@ The descriptions are the prompt. `get_open_incidents` says "omit the filters to 
 |------|--------|
 | `python smoke_test.py` | 19/19 checks passed — seeded data, every tool, every failure mode |
 | `python test_agent_loop.py` | 21/21 checks passed — tool call → observation → answer, using a scripted fake LLM |
+| `python test_api.py` | 21/21 checks passed — routing, validation, full-trace serialization, 502 mapping, CORS |
 | Tool error handling | Unknown client returns `{"error": "Unknown client 'HSBC'. Known clients: ..."}` to the model instead of raising |
 | Parallel tool calls | Two `function_response` parts in one turn are serialized and replayed correctly |
 | Turn budget | A model that never stops is cut off at `max_turns` with `truncated: true` |
-| Live end-to-end run | **Blocked** — the local `GEMINI_API_KEY` returns `401 UNAUTHENTICATED` (see below) |
+| Live HTTP server (`uvicorn` on :8011) | `GET /` 200 · `GET /tools` 200 (5 tools) · `POST /ask` blank 400 · `max_turns=99` 422 · missing field 422 · dead credential 502 · CORS preflight from `*.vercel.app` 200 with the origin echoed · unknown origin rejected |
+| Live end-to-end model run | **Blocked** — the local `GEMINI_API_KEY` returns `401 UNAUTHENTICATED` (see below) |
 
 ## What broke, and what we learned
 
@@ -84,6 +87,29 @@ The `function_response` is not enough on its own — the preceding model turn ha
 
 The loop terminates when the model returns no function calls. Treating "no tool call" as a failure would turn a correct answer into a stack trace. Truncation (`truncated: true`) is a different, explicit outcome that carries the trace so a human can see where it got stuck.
 
+## The HTTP layer, verified two ways
+
+`test_api.py` patches `main.run` and asserts the contract replayably. That alone is not enough, because a `TestClient` never opens a socket and never installs the CORS middleware in the same order a real ASGI server does. So the server was also run for real:
+
+```powershell
+python -m uvicorn main:app --port 8011
+```
+
+| Request | Observed | Means |
+|---|---|---|
+| `GET /` | 200 `{"message": "Agent Lab API is running"}` | ASGI stack is live |
+| `GET /tools` | 200, 5 declarations | the model's tool contract is inspectable over HTTP |
+| `POST /ask` `{"question":"  "}` | 400 | manual blank check fires before the agent runs |
+| `POST /ask` `{"max_turns":99}` | 422 | `Field(ge=1, le=12)` is enforced, cost guard can't be bypassed by a client |
+| `POST /ask` `{"max_turns":2}` (no question) | 422 | Pydantic required-field validation |
+| `POST /ask` valid question, dead key | 502 + real error text | an upstream failure is reported as upstream, not as a 500 crash |
+| `OPTIONS /ask` `Origin: https://agent-ui.vercel.app` | 200, origin echoed | `allow_origin_regex` admits any `*.vercel.app` preview |
+| `OPTIONS /ask` `Origin: https://evil.example.com` | rejected, no allow-origin | the regex is not a wildcard |
+
+The 502 detail is the useful one: `POST /ask` with a dead credential returned the fallback chain's own error string, so a caller can tell "the model provider is down" apart from "the agent code threw."
+
+Both layers now run in CI-shaped form: 61 assertions, no key, no network, no server process.
+
 ## The blocker: expired API key
 
 Every live call returned:
@@ -107,6 +133,7 @@ copy .env.example .env      # then paste a fresh GEMINI_API_KEY
 
 python smoke_test.py        # 19 offline checks
 python test_agent_loop.py   # 21 offline checks
+python test_api.py          # 21 offline checks (no server needed)
 python agent.py "Which clients have an open SEV1 right now, and who do I page for each?"
 python agent.py "Is Emirates NBD meeting its SLA?" --json
 python -m uvicorn main:app --reload
@@ -115,11 +142,12 @@ python -m uvicorn main:app --reload
 ## What was measured (journal entry)
 
 - 5 tools declared, 5 implemented, 1:1 contract check enforced by test
-- 19/19 tool checks + 21/21 loop checks = **40 offline assertions, 0 network calls**
+- 19/19 tool checks + 21/21 loop checks + 21/21 API checks = **61 offline assertions, 0 network calls**
 - Seed data: 6 clients, 11 incidents, 2 open SEV1
 - Turn budget: 6 (env `AGENT_MAX_TURNS`), per-call timeout 30s (`GEMINI_TIMEOUT_MS`)
 - 1 real bug found by the tests (timezone offset label), 1 API-contract constraint discovered (dict-only `FunctionResponse`)
-- Live runs: 0 successful — blocked on a 401 from an expired key
+- HTTP status codes verified against a live server: 200 / 400 / 422 ×3 / 502 / CORS 200 + rejection
+- Live model runs: 0 successful — blocked on a 401 from an expired key
 
 ## Tomorrow (Day 11)
 
