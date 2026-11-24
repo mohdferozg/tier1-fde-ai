@@ -17,6 +17,7 @@
 | `smoke_test.py` | 19 offline checks of the data layer and tools. No API key, no tokens. |
 | `test_agent_loop.py` | 21 offline checks of the loop, using a scripted fake LLM. No network. |
 | `test_api.py` | 21 offline checks of the HTTP layer via `TestClient`, with `main.run` patched. No server, no network. |
+| `test_wire.py` | 17 offline checks of the transport: the real SDK against a local mock endpoint, inspecting the JSON it actually sent. No key, no network. |
 
 ## The architecture
 
@@ -49,6 +50,7 @@ The descriptions are the prompt. `get_open_incidents` says "omit the filters to 
 | `python smoke_test.py` | 19/19 checks passed — seeded data, every tool, every failure mode |
 | `python test_agent_loop.py` | 21/21 checks passed — tool call → observation → answer, using a scripted fake LLM |
 | `python test_api.py` | 21/21 checks passed — routing, validation, full-trace serialization, 502 mapping, CORS |
+| `python test_wire.py` | 17/17 checks passed — real SDK, real HTTP, mock endpoint: declarations out, `functionCall` parsed, observation back |
 | Tool error handling | Unknown client returns `{"error": "Unknown client 'HSBC'. Known clients: ..."}` to the model instead of raising |
 | Parallel tool calls | Two `function_response` parts in one turn are serialized and replayed correctly |
 | Turn budget | A model that never stops is cut off at `max_turns` with `truncated: true` |
@@ -108,7 +110,32 @@ python -m uvicorn main:app --port 8011
 
 The 502 detail is the useful one: `POST /ask` with a dead credential returned the fallback chain's own error string, so a caller can tell "the model provider is down" apart from "the agent code threw."
 
-Both layers now run in CI-shaped form: 61 assertions, no key, no network, no server process.
+## The wire, verified against a mock endpoint
+
+`test_agent_loop.py` fakes the model by *constructing* SDK objects. That proves the loop but says nothing about transport. So `test_wire.py` does the opposite: it points the **real** `genai` client at a local server speaking the REST dialect (`types.HttpOptions(base_url=...)`), then asserts on the JSON the SDK actually produced.
+
+Two details worth knowing:
+
+- The mock returns a `functionCall` part as raw JSON, so the parse path `response.function_calls` is exercised for real, not faked.
+- It also returns a `thought` part alongside the answer, which proves `extract_text()` filters reasoning out of a live-shaped payload.
+
+What came back from the second request body, exactly as serialized:
+
+```json
+[
+  { "role": "model", "parts": [ { "functionCall": { "name": "get_open_incidents", "args": { "severity": "SEV1" } } } ] },
+  { "role": "user",  "parts": [ { "functionResponse": {
+      "name": "get_open_incidents",
+      "response": { "result": { "count": 2, "incidents": [ { "client": "Emirates NBD" }, { "client": "Nordbank" } ] } }
+  } } ] }
+]
+```
+
+That `"response": { "result": ... }` nesting is not cosmetic — it is the shape a bare list was rejected for earlier. Here it is confirmed on the wire rather than in a constructed object.
+
+Three layers now run in CI-shaped form: 78 assertions, no key, no network, no server process.
+
+The remaining gap is honest and small: this proves the agent can *use* a tool call correctly, not that Gemini *chooses* the right tool for a natural-language question. That last step needs a live key.
 
 ## The blocker: expired API key
 
@@ -134,6 +161,7 @@ copy .env.example .env      # then paste a fresh GEMINI_API_KEY
 python smoke_test.py        # 19 offline checks
 python test_agent_loop.py   # 21 offline checks
 python test_api.py          # 21 offline checks (no server needed)
+python test_wire.py         # 17 offline checks (real SDK, mock endpoint)
 python agent.py "Which clients have an open SEV1 right now, and who do I page for each?"
 python agent.py "Is Emirates NBD meeting its SLA?" --json
 python -m uvicorn main:app --reload
@@ -142,11 +170,12 @@ python -m uvicorn main:app --reload
 ## What was measured (journal entry)
 
 - 5 tools declared, 5 implemented, 1:1 contract check enforced by test
-- 19/19 tool checks + 21/21 loop checks + 21/21 API checks = **61 offline assertions, 0 network calls**
+- 19/19 tool checks + 21/21 loop checks + 21/21 API checks + 17/17 wire checks = **78 offline assertions, 0 network calls**
 - Seed data: 6 clients, 11 incidents, 2 open SEV1
 - Turn budget: 6 (env `AGENT_MAX_TURNS`), per-call timeout 30s (`GEMINI_TIMEOUT_MS`)
 - 1 real bug found by the tests (timezone offset label), 1 API-contract constraint discovered (dict-only `FunctionResponse`)
 - HTTP status codes verified against a live server: 200 / 400 / 422 ×3 / 502 / CORS 200 + rejection
+- Wire format verified without a key: 5 declarations out, raw `functionCall` parsed, `functionResponse.response` a JSON object
 - Live model runs: 0 successful — blocked on a 401 from an expired key
 
 ## Tomorrow (Day 11)
